@@ -1,0 +1,948 @@
+BallAttackPositionData.cs
+ 
+using System;
+using UnityEngine;
+
+public class BallAttackPositionData
+{
+    public Vector3 MouseDownPosition;
+    public Vector3 MouseUpPosition;
+    public string mouseDownGrabedLayer;
+
+    public BallAttackPositionData(Vector3 mouseDownPosition, Vector3 mouseUpPosition, string mouseDownGrabedLayer)
+    {
+        MouseDownPosition = mouseDownPosition;
+        MouseUpPosition = mouseUpPosition;
+        this.mouseDownGrabedLayer = mouseDownGrabedLayer ?? throw new ArgumentNullException(nameof(mouseDownGrabedLayer));
+    }
+}
+ 
+ 
+BallFallAmountData.cs
+ 
+public class BallFallAmountOutputData
+{
+    public string amountText = "";
+}
+ 
+ 
+BallFallStateInputData.cs
+ 
+using System;
+
+public class BallFallDetectInputData
+{
+    public string FallDetectLayerName = "";
+    public HallType HallType;
+
+    public BallFallDetectInputData(string fallDetectLayerName, HallType hallType)
+    {
+        this.FallDetectLayerName = fallDetectLayerName ?? throw new ArgumentNullException(nameof(fallDetectLayerName));
+        HallType = hallType;
+    }
+}
+public enum HallType
+{
+    Hall,
+    Other
+}
+
+ 
+ 
+AttackRedBallUseCase.cs
+ 
+using System;
+using UniRx;
+using UnityEngine;
+
+public class AttackRedBallUseCase : IAttackRedBallUseCase
+{
+    public IObservable<Vector3> AttackRedBallForceAsObservable => attackRedBallForceAsObservable;
+    private Subject<Vector3> attackRedBallForceAsObservable = new Subject<Vector3>();
+    private float ballForce;
+    public AttackRedBallUseCase(IBallDataRepository ballDataRepository)
+    {
+        ballForce = ballDataRepository.GetRedBallForce();
+    }
+
+    public void AttackRedBallForce(BallAttackPositionData ballAttackPositionData)
+    {
+        var layerName = ballAttackPositionData.mouseDownGrabedLayer;
+        if (layerName == "Ground" || layerName == "PlayerBall" || layerName == "Ball")
+        {
+            attackRedBallForceAsObservable.OnNext((ballAttackPositionData.MouseDownPosition - ballAttackPositionData.MouseUpPosition).normalized * ballForce);
+        }
+    }
+}
+public enum MouseState
+{
+    Down,
+    Stay,
+    Up
+}
+
+ 
+ 
+FallBallCountUseCase.cs
+ 
+
+using System;
+using UniRx;
+
+public class FallBallCountUseCase : IFallBallCountUseCase
+{
+    FallCounterEntity fallCounterEntity = new FallCounterEntity();
+
+    public IObservable<BallFallAmountOutputData> BallCountAsObserable => ballCountAsObserable;
+    public BehaviorSubject<BallFallAmountOutputData> ballCountAsObserable = new BehaviorSubject<BallFallAmountOutputData>(new BallFallAmountOutputData() { amountText = "Fall Ball: 0" });
+    public void BallCount(BallFallDetectInputData stateData)
+    {
+        if (stateData.HallType == HallType.Other) return;
+        if (stateData.FallDetectLayerName == "Ball")
+        {
+            fallCounterEntity.Amount++;
+        }
+        Output();
+    }
+    private void Output()
+    {
+        BallFallAmountOutputData amountData = new BallFallAmountOutputData();
+        amountData.amountText = "Fall Ball: " + fallCounterEntity.Amount.ToString();
+        ballCountAsObserable.OnNext(amountData);
+    }
+
+}
+
+ 
+ 
+GameOverDetectUseCase.cs
+ 
+
+using System;
+using UniRx;
+
+public class GameOverDetectUseCase : IGameOverDetectUseCase
+{
+    public IObservable<Unit> GameOverAsObserable => gameOverAsObserable;
+    public Subject<Unit> gameOverAsObserable = new Subject<Unit>();
+    public void GameOverDetect(BallFallDetectInputData stateData)
+    {
+        if (stateData.FallDetectLayerName == "PlayerBall")
+        {
+            gameOverAsObserable.OnNext(Unit.Default);
+        }
+    }
+}
+ 
+ 
+IMouseClickedCountUseCase.cs
+ 
+using System;
+
+public interface IMouseClickedCountUseCase
+{
+    IObservable<string> DebugMousePositionAsObservable { get; }
+
+    void MouseClicked(MouseState state);
+}
+ 
+ 
+MouseClickedCountUseCase.cs
+ 
+using System;
+using UniRx;
+public class MouseClickedCountUseCase : IMouseClickedCountUseCase
+{
+    public IObservable<string> DebugMousePositionAsObservable => debugMousePositionAsObservable;
+    private BehaviorSubject<string> debugMousePositionAsObservable = new BehaviorSubject<string>("MouseCliced : 0");
+    MouseClickedCountEntity countEntity = new MouseClickedCountEntity();
+    public void MouseClicked(MouseState state)
+    {
+        switch (state)
+        {
+            case MouseState.Down:
+                countEntity.Amount++;
+                debugMousePositionAsObservable.OnNext("MouseCliced : "+ countEntity.Amount.ToString());
+                break;
+            case MouseState.Stay:
+                break;
+            case MouseState.Up:
+                break;
+            default:
+                break;
+        }
+    }
+}
+ 
+ 
+MousePositionDebugUseCase.cs
+ 
+using System;
+using UniRx;
+using UnityEngine;
+
+public class MousePositionDebugUseCase : IDebugMousePositionUseCase
+{
+    public IObservable<string> DebugMousePositionAsObservable => debugMousePositionAsObservable;
+    private Subject<string> debugMousePositionAsObservable = new Subject<string>();
+    public void MousePositionInput(Vector3 mousePosition, MouseState state)
+    {
+        switch (state)
+        {
+            case MouseState.Down:
+                debugMousePositionAsObservable.OnNext("MouseDownPosition : " + mousePosition.ToString());
+                break;
+            case MouseState.Stay:
+                debugMousePositionAsObservable.OnNext("MouseStayPosition : " + mousePosition.ToString());
+                break;
+            case MouseState.Up:
+                debugMousePositionAsObservable.OnNext("MouseUpPosition : " + mousePosition.ToString());
+                break;
+            default:
+                break;
+        }
+
+    }
+}
+
+ 
+ 
+IAttackRedBallUseCase.cs
+ 
+using System;
+using UnityEngine;
+
+public interface IAttackRedBallUseCase
+{
+    IObservable<Vector3> AttackRedBallForceAsObservable { get; }
+
+    void AttackRedBallForce(BallAttackPositionData ballAttackPositionData);
+}
+ 
+ 
+IDebugMousePositionUseCase.cs
+ 
+using System;
+using UnityEngine;
+
+public interface IDebugMousePositionUseCase
+{
+    IObservable<string> DebugMousePositionAsObservable { get; }
+
+    void MousePositionInput(Vector3 mousePosition, MouseState state);
+}
+ 
+ 
+IFallBallCountUseCase.cs
+ 
+using System;
+using System.Collections.Generic;
+using UniRx;
+
+public interface IFallBallCountUseCase
+{
+    IObservable<BallFallAmountOutputData> BallCountAsObserable { get; }
+    void BallCount(BallFallDetectInputData stateData);
+}
+public interface IGameoverDetectUseCase
+{
+    IObservable<Unit> GameOverDetectAsObserable { get; }
+    void FallDetect(BallFallDetectInputData stateData);
+}
+
+ 
+ 
+IGameOverDetectUseCase.cs
+ 
+
+using System;
+using UniRx;
+
+public interface IGameOverDetectUseCase
+{
+    IObservable<Unit> GameOverAsObserable { get; }
+    void GameOverDetect(BallFallDetectInputData stateData);
+}
+ 
+ 
+IBallDataRepository.cs
+ 
+public interface IBallDataRepository
+{
+    float GetRedBallForce();
+}
+ 
+ 
+FallCounterEntity.cs
+ 
+using System.Collections;
+using System.Collections.Generic;
+using UnityEngine;
+
+public class FallCounterEntity
+{
+    public int Amount;
+}
+
+ 
+ 
+MouseClickedCountEntity.cs
+ 
+public class MouseClickedCountEntity
+{
+    public int Amount;
+}
+
+ 
+ 
+MouseInput.cs
+ 
+using UnityEngine;
+using UniRx;
+using UniRx.Triggers;
+using System;
+public class MouseInputView : MonoBehaviour
+{
+    public IObservable<Vector3> MouseUpInputAsObservable => this.OnMouseUpAsObservable().Select(_ => Input.mousePosition);
+    public IObservable<Vector3> MouseDownInputAsObservable => this.OnMouseDownAsObservable().Select(_ => Input.mousePosition);
+    public IObservable<Vector3> MousePosiitonAsObservable => this.UpdateAsObservable().Select(_ => Input.mousePosition);
+
+
+}
+
+ 
+ 
+BallFallAmountView.cs
+ 
+using System.Collections;
+using System.Collections.Generic;
+using UnityEngine;
+using UnityEngine.UI;
+using Zenject;
+using UniRx;
+public class BallFallAmountView : MonoBehaviour
+{
+    Text text;
+    [Inject]
+    public void Init(IBallFallAmountPresenter fallAmountPresenter)
+    {
+        text = GetComponent<Text>();
+        fallAmountPresenter.viewModelAsObserable.Subscribe(t => text.text = t.AmountText);
+    }
+
+}
+
+ 
+ 
+BallFallDetectView.cs
+ 
+using UnityEngine;
+using Zenject;
+using UniRx.Triggers;
+using UniRx;
+
+public class BallFallDetectView : MonoBehaviour
+{
+    [SerializeField] HallType hallType = HallType.Hall;
+    IBallFallDetectController ballFallDetectController;
+    [Inject]
+    private void Init(IBallFallDetectController ballFallDetectController)
+    {
+        this.ballFallDetectController = ballFallDetectController;
+    }
+    private void Start()
+    {
+        this.OnTriggerEnterAsObservable().Select(c => (c.gameObject.layer, hallType.ToString())).Subscribe(ballFallDetectController.BallTriggerEnterAsOvserver);
+    }
+}
+enum HallType
+{
+    Hall,
+    Other
+}
+
+ 
+ 
+GameOverView.cs
+ 
+using UnityEngine;
+using UnityEngine.UI;
+using Zenject;
+using UniRx;
+using System.Collections;
+using UnityEngine.SceneManagement;
+using System;
+
+public class GameOverView : MonoBehaviour
+{
+    IGameOverSpawnPresenter gameOverSpawnPresenter;
+    Image gameOverImage;
+    [Inject]
+    public void Init(IGameOverSpawnPresenter gameOverSpawnPresenter)
+    {
+        this.gameOverSpawnPresenter = gameOverSpawnPresenter;
+    }
+    void Start()
+    {
+        Time.timeScale =1f;
+        gameOverImage = GetComponent<Image>();
+        gameOverSpawnPresenter.GameOverAsObserable.Subscribe(_ =>
+        {
+            Time.timeScale = 0f;
+            StartCoroutine(Fade());
+        });
+    }
+    IEnumerator Fade()
+    {
+        float f = 0f;
+        while (f < 1f)
+        {
+            gameOverImage.color = new Color(gameOverImage.color.r, gameOverImage.color.g, gameOverImage.color.b, f);
+            yield return null;
+            f += 0.02f;
+        }
+
+        GameObject child = new GameObject();
+        child.transform.parent = this.transform;
+
+        var image = child.AddComponent<Image>();
+        image.rectTransform.anchoredPosition = Vector3.zero;
+        image.rectTransform.sizeDelta = new Vector2(Screen.width, Screen.height);
+        image.color = Color.clear;
+        yield return new WaitForSecondsRealtime(3f);
+        f = 0f;
+        while (f < 1f)
+        {
+            image.color = new Color(image.color.r, image.color.g, image.color.b, f);
+            yield return null;
+            f += 0.02f;
+        }
+        SceneManager.LoadScene(gameObject.scene.name);
+
+    }
+}
+
+ 
+ 
+MouseClickedCountView.cs
+ 
+using UniRx;
+using UniRx.Triggers;
+using UnityEngine;
+using UnityEngine.UI;
+using Zenject;
+
+public class MouseClickedCountView : MonoBehaviour
+{
+    [Inject]
+    private void Initialize(IMouseClickedCountPresenter mouseClickedCountPresenter)
+    {
+        var text = GetComponent<Text>();
+        mouseClickedCountPresenter.mousePositionDebugTextAsObservable.Select(vm => vm.Text).Subscribe(str =>text.text = str);
+    }
+}
+ 
+ 
+MousePositionDebugView.cs
+ 
+using UniRx;
+using UniRx.Triggers;
+using UnityEngine;
+using Zenject;
+
+public class MousePositionDebugView : MonoBehaviour
+{
+    [Inject] 
+    private void Initialize(IMouseClickedController mousePositionDebugController, IMousePositionDebugPresenter mousePositionDebugPresenter)
+    {
+        this.UpdateAsObservable().Where(_ => Input.GetMouseButtonUp(0)).Subscribe(p => mousePositionDebugController.MouseUpInput(Input.mousePosition));
+        this.UpdateAsObservable().Where(_ => Input.GetMouseButtonDown(0)).Subscribe(p => mousePositionDebugController.MouseDownInput(Input.mousePosition));
+
+        mousePositionDebugPresenter.mousePositionDebugTextAsObservable.Select(vm => vm.DebugText).Subscribe(Debug.Log);
+    }
+}
+
+ 
+ 
+QueueGrabbedView.cs
+ 
+using System.Collections;
+using System.Collections.Generic;
+using UnityEngine;
+
+public class QueueGrabbedView : MonoBehaviour
+{
+    private void OnMouseDrag()
+    {
+        var x = Input.mousePosition;
+        x.z = 1f;
+        transform.parent.position = Camera.main.ScreenToWorldPoint(x);
+    }
+}
+
+ 
+ 
+QueueView.cs
+ 
+using System.Collections;
+using System.Collections.Generic;
+using UnityEngine;
+using Zenject;
+
+public class QueueView : MonoBehaviour
+{
+    Transform pos;
+    [Inject]void Init(IPlayerBallPosition ballPosition)
+    {
+        pos = ballPosition.Player;
+    }
+
+    // Update is called once per frame
+    void Update()
+    {
+        transform.LookAt(pos.position, Vector3.back);
+    }
+
+}
+
+ 
+ 
+RedBallView.cs
+ 
+using UnityEngine;
+using Zenject;
+using UniRx;
+using UniRx.Triggers;
+
+public class RedBallView : MonoBehaviour, IPlayerBallPosition
+{
+    public Transform Player { get; private set; }
+    [Inject]
+    void Init(IAttackRedBallPresenter attackRedBallPresenter, IAttackRedBallMousePositionController attackRedBallMousePositionController)
+    {
+        var rigid = GetComponent<Rigidbody>();
+        Player = transform;
+        attackRedBallPresenter.AttackRedBallForceAsObservable.Subscribe(vm =>
+        {
+            rigid.AddForce(vm.Force, ForceMode.Impulse);
+        });
+        Vector3 mouseDownPosition = new Vector3();
+        this.UpdateAsObservable().Where(_ => Input.GetMouseButtonUp(0)).Subscribe(p => attackRedBallMousePositionController.RedBallDataInput(Input.mousePosition, mouseDownPosition));
+        this.UpdateAsObservable().Where(_ => Input.GetMouseButtonDown(0)).Subscribe(p => mouseDownPosition = Input.mousePosition);
+
+    }
+
+}
+
+public interface IPlayerBallPosition
+{
+    Transform Player { get; }
+}
+ 
+ 
+BallCountInstaller.cs
+ 
+using System.Collections;
+using System.Collections.Generic;
+using UnityEngine;
+using Zenject;
+
+public class BallCountInstaller : MonoInstaller
+{
+    public override void InstallBindings()
+    {
+        Container.BindInterfacesTo<BallFallAmountPresenter>().AsCached();
+        Container.BindInterfacesTo<BallFallDetectController>().AsCached();
+
+        Container.BindInterfacesTo<GameOverDetectUseCase>().AsCached();
+        Container.BindInterfacesTo<GameOverSpawnPresenter>().AsCached();
+
+        Container.BindInterfacesTo<FallBallCountUseCase>().AsCached();
+    }
+}
+
+ 
+ 
+MousePositionDebugInstaller.cs
+ 
+using Zenject;
+
+public class MousePositionDebugInstaller : MonoInstaller
+{
+    public override void InstallBindings()
+    {
+        Container.BindInterfacesTo<MouseClickedController>().AsCached();
+        Container.BindInterfacesTo<MousePositionDebugPresenter>().AsCached();
+        Container.BindInterfacesTo<MousePositionDebugUseCase>().AsCached();
+        Container.BindInterfacesTo<MouseClickedCountUseCase>().AsCached();
+        Container.BindInterfacesTo<MouseClickedCountPresenter>().AsCached();
+    }
+}
+ 
+ 
+RedBallAttackInstaller.cs
+ 
+using UnityEngine;
+using Zenject;
+
+public class RedBallAttackInstaller : MonoInstaller
+{
+    public override void InstallBindings()
+    {
+        Container.BindInterfacesTo<AttackRedBallMousePositionController>().AsCached();
+        Container.BindInterfacesTo<AttackRedBallPresenter>().AsCached();
+        Container.BindInterfacesTo<AttackRedBallUseCase>().AsCached();
+        Container.BindInterfacesTo<BallDataRepository>().AsCached();
+    }
+}
+
+ 
+ 
+AttackRedBallMousePositionController.cs
+ 
+using UnityEngine;
+
+public class AttackRedBallMousePositionController : IAttackRedBallMousePositionController
+{
+    private readonly IAttackRedBallUseCase attackRedBallUseCase;
+
+    public AttackRedBallMousePositionController(IAttackRedBallUseCase attackRedBallUseCase)
+    {
+        this.attackRedBallUseCase = attackRedBallUseCase;
+    }
+
+    public void RedBallDataInput(Vector3 mouseUpPosition, Vector3 mouseDownPosition)
+    {
+        var mouseUpRay = Camera.main.ScreenPointToRay(mouseUpPosition);
+        var mouseDownRay = Camera.main.ScreenPointToRay(mouseDownPosition);
+        if (Physics.Raycast(mouseUpRay, out var hitUp, Mathf.Infinity))
+        {
+            if (Physics.Raycast(mouseDownRay, out var hitDown, Mathf.Infinity))
+            {
+                attackRedBallUseCase.AttackRedBallForce(new BallAttackPositionData(hitDown.point, hitUp.point, LayerMask.LayerToName(hitDown.collider.gameObject.layer)));
+            }
+        }
+
+    }
+}
+
+ 
+ 
+BallFallDetectController.cs
+ 
+using System;
+using System.Collections;
+using System.Collections.Generic;
+using UniRx;
+using UnityEngine;
+
+public class BallFallDetectController : IBallFallDetectController
+{
+    public IObserver<(int layerId, string type)> BallTriggerEnterAsOvserver => ballTriggerEnter;
+    public Subject<(int layerId, string type)> ballTriggerEnter = new Subject<(int layerId, string type)>();
+    private readonly IFallBallCountUseCase fallBallCountUseCase;
+
+    public BallFallDetectController(IFallBallCountUseCase fallBallCountUseCase, IGameOverDetectUseCase gameOverDetectUseCase)
+    {
+        var dataOvserable = ballTriggerEnter.Select(i => new BallFallDetectInputData(LayerMask.LayerToName(i.layerId), Tlanslate(i.type)));
+
+        dataOvserable.Subscribe(d => fallBallCountUseCase.BallCount(d));
+        dataOvserable.Subscribe(d => gameOverDetectUseCase.GameOverDetect(d));
+    }
+    HallType Tlanslate(string hallType)
+    {
+        switch (hallType)
+        {
+            case "Hall":
+                return HallType.Hall;
+            case "Other":
+                return HallType.Other;
+            default:
+                throw new InvalidOperationException();
+        }
+    }
+}
+
+ 
+ 
+MousePositionDebugController.cs
+ 
+using UnityEngine;
+
+public class MouseClickedController : IMouseClickedController
+{
+    private readonly IDebugMousePositionUseCase debugMousePositionUseCase;
+    private readonly IMouseClickedCountUseCase mouseClickedCountUseCase;
+
+    public MouseClickedController(IDebugMousePositionUseCase debugMousePositionUseCase, IMouseClickedCountUseCase mouseClickedCountUseCase)
+    {
+        this.debugMousePositionUseCase = debugMousePositionUseCase;
+        this.mouseClickedCountUseCase = mouseClickedCountUseCase;
+    }
+
+    public void MouseDownInput(Vector3 mousePosition)
+    {
+        debugMousePositionUseCase.MousePositionInput(mousePosition, MouseState.Down);
+        mouseClickedCountUseCase.MouseClicked(MouseState.Down);
+    }
+    public void MouseUpInput(Vector3 mousePosition)
+    {
+        debugMousePositionUseCase.MousePositionInput(mousePosition, MouseState.Up);
+        mouseClickedCountUseCase.MouseClicked(MouseState.Up);
+    }
+    public void MouseStayInput(Vector3 mousePosition)
+    {
+        debugMousePositionUseCase.MousePositionInput(mousePosition, MouseState.Stay);
+        mouseClickedCountUseCase.MouseClicked(MouseState.Stay);
+    }
+}
+
+ 
+ 
+IAttackRedBallMousePositionController.cs
+ 
+using UnityEngine;
+
+public interface IAttackRedBallMousePositionController
+{
+    void RedBallDataInput(Vector3 mousePosition, Vector3 redBallPosition);
+}
+ 
+ 
+IBallFallDetectController.cs
+ 
+using System;
+
+public interface IBallFallDetectController
+{
+    IObserver<(int layerId, string type)> BallTriggerEnterAsOvserver { get; }
+}
+ 
+ 
+IMousePositionDebugController.cs
+ 
+using UnityEngine;
+
+public interface IMouseClickedController
+{
+    void MouseDownInput(Vector3 mousePosition);
+    void MouseStayInput(Vector3 mousePosition);
+    void MouseUpInput(Vector3 mousePosition);
+}
+ 
+ 
+AttackRedBallPresenter.cs
+ 
+using System;
+using UniRx;
+
+public class AttackRedBallPresenter : IAttackRedBallPresenter
+{
+    public IObservable<AttackBallForceViewModel> AttackRedBallForceAsObservable { get; }
+    public AttackRedBallPresenter(IAttackRedBallUseCase attackRedBallUseCase)
+    {
+        AttackRedBallForceAsObservable =  attackRedBallUseCase.AttackRedBallForceAsObservable.Select(f => new AttackBallForceViewModel(f));
+    }
+}
+
+ 
+ 
+BallFallAmountPresenter.cs
+ 
+using System;
+using UniRx;
+
+public class BallFallAmountPresenter : IBallFallAmountPresenter
+{
+    public IObservable<BallFallAmountViewModel> viewModelAsObserable { get; }
+    public BallFallAmountPresenter(IFallBallCountUseCase fallBallCountUseCase)
+    {
+        viewModelAsObserable = fallBallCountUseCase.BallCountAsObserable.Select(Translate);
+    }
+
+    public BallFallAmountViewModel Translate(BallFallAmountOutputData ballFallAmountOutputData)
+    {
+        return new BallFallAmountViewModel(ballFallAmountOutputData.amountText);
+    }
+}
+
+ 
+ 
+GameOverSpawnPresenter.cs
+ 
+using System;
+using UniRx;
+
+public class GameOverSpawnPresenter : IGameOverSpawnPresenter
+{
+    public IObservable<GameOverDetectViewModel> GameOverAsObserable { get; }
+    public GameOverSpawnPresenter(IGameOverDetectUseCase gameOverDetectUseCase)
+    {
+        GameOverAsObserable = gameOverDetectUseCase.GameOverAsObserable.Select(_ => new GameOverDetectViewModel());
+    }
+}
+
+ 
+ 
+MouseClickedCountPresenter.cs
+ 
+using System;
+using UniRx;
+
+public class MouseClickedCountPresenter : IMouseClickedCountPresenter
+{
+    private readonly IMouseClickedCountUseCase mouseClickedCountUseCase;
+    public IObservable<MouseClicedCountDataViewModel> mousePositionDebugTextAsObservable { get; }
+    public MouseClickedCountPresenter(IMouseClickedCountUseCase mouseClickedCountUseCase)
+    {
+        this.mouseClickedCountUseCase = mouseClickedCountUseCase;
+        mousePositionDebugTextAsObservable = mouseClickedCountUseCase.DebugMousePositionAsObservable.Select(s => new MouseClicedCountDataViewModel(s));
+    }
+}
+
+ 
+ 
+MousePositionDebugPresenter.cs
+ 
+using System;
+using UniRx;
+
+public class MousePositionDebugPresenter : IMousePositionDebugPresenter
+{
+    private readonly IDebugMousePositionUseCase debugMousePositionUseCase;
+    public IObservable<MousePositionDebugViewModel> mousePositionDebugTextAsObservable { get; }
+    public MousePositionDebugPresenter(IDebugMousePositionUseCase debugMousePositionUseCase)
+    {
+        this.debugMousePositionUseCase = debugMousePositionUseCase;
+        mousePositionDebugTextAsObservable = debugMousePositionUseCase.DebugMousePositionAsObservable.Select(s =>new MousePositionDebugViewModel(s));
+    }
+}
+
+ 
+ 
+IAttackRedBallPresenter.cs
+ 
+using System;
+
+public interface IAttackRedBallPresenter
+{
+    IObservable<AttackBallForceViewModel> AttackRedBallForceAsObservable { get; }
+}
+ 
+ 
+IBallFallAmountPresenter.cs
+ 
+using System;
+using System.Collections;
+using System.Collections.Generic;
+using UnityEngine;
+
+public interface IBallFallAmountPresenter
+{
+    IObservable<BallFallAmountViewModel> viewModelAsObserable { get; }
+}
+
+ 
+ 
+IGameOverSpawnPresenter.cs
+ 
+using System;
+
+public interface IGameOverSpawnPresenter
+{
+    IObservable<GameOverDetectViewModel> GameOverAsObserable { get; }
+}
+ 
+ 
+IMouseClickedCountPresenter.cs
+ 
+using System;
+
+public interface IMouseClickedCountPresenter
+{
+    IObservable<MouseClicedCountDataViewModel> mousePositionDebugTextAsObservable { get; }
+}
+ 
+ 
+IMousePositionDebugPresenter.cs
+ 
+using System;
+
+public interface IMousePositionDebugPresenter
+{
+    IObservable<MousePositionDebugViewModel> mousePositionDebugTextAsObservable { get; }
+}
+ 
+ 
+BallDataRepository.cs
+ 
+public class BallDataRepository : IBallDataRepository
+{
+    public float GetRedBallForce()
+    {
+        return 1.5f;
+    }
+}
+ 
+ 
+BallFallAmountViewModel.cs
+ 
+using System;
+using UnityEngine;
+
+public class BallFallAmountViewModel 
+{
+    public BallFallAmountViewModel(string amountText)
+    {
+        AmountText = amountText ?? throw new ArgumentNullException(nameof(amountText));
+    }
+
+    public string AmountText { get; }
+}
+public class AttackBallForceViewModel
+{
+    public AttackBallForceViewModel(Vector3 force)
+    {
+        Force = force;
+    }
+
+    public Vector3 Force { get; }
+}
+
+ 
+ 
+GameOverDetectViewModel.cs
+ 
+public class GameOverDetectViewModel
+{
+}
+ 
+ 
+MouseClicedCountDataViewModel.cs
+ 
+public class MouseClicedCountDataViewModel
+{
+    public string Text { get; }
+
+    public MouseClicedCountDataViewModel(string text)
+    {
+        this.Text = text;
+    }
+}
+ 
+ 
+MousePositionDebugViewModel.cs
+ 
+using System;
+
+public class MousePositionDebugViewModel
+{
+    public MousePositionDebugViewModel(string debugText)
+    {
+        DebugText = debugText ?? throw new ArgumentNullException(nameof(debugText));
+    }
+
+    public string DebugText { get; }
+}
+ 
+ 
